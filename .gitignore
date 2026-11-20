@@ -1,0 +1,35 @@
+<CodeBlock language="gitignore" editable>
+# Environment dan credentials
+.env
+.env.*
+!.env.example
+*.session
+*.session-journal
+venv/
+.venv/
+env/
+.vscode/
+*.log
+__pycache__/
+
+logs/.log
+</CodeBlock>
+eror_log.md
+telegram_session.session
+__pycache__/main.cpython-311.pyc
+
+# Telegram session
+*.session
+*.session-journal
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+.env.*
+
+# Virtual environment
+venv/
+.venv/

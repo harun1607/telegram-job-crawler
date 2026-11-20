@@ -4,6 +4,7 @@ import csv
 import asyncio
 import tempfile
 import pytesseract
+
 # Konfigurasi lokasi executable Tesseract OCR
 pytesseract.pytesseract.tesseract_cmd = (
     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -41,14 +42,14 @@ TIMEZONE = ZoneInfo("Asia/Jakarta")
 # Gunakan username channel, bukan URL lengkap.
 CHANNELS = [
     "ikjofficial",
-    "infoinlokerpabrik",
-    "lowongankerjatangsel",
-    "lokertgrterbaru",
-    "lokerkucom",
+    #"infoinlokerpabrik",
+    #"lowongankerjatangsel",
+    #"lokertgrterbaru",
+    #"lokerkucom",
 ]
 
 # Batas jumlah pesan yang diambil dari setiap channel.
-LIMIT_MESSAGES = 300
+LIMIT_MESSAGES = 5
 
 # Folder dan nama file hasil crawling.
 OUTPUT_DIR = "output"
@@ -880,43 +881,69 @@ def detect_deadline(text):
 # 15. FUNGSI DETEKSI STATUS LOWONGAN
 # ============================================================
 
-def detect_job_status(text):
+def detect_job_status(text, posted_date):
     """
-    Menentukan status lowongan berdasarkan bukti dalam teks.
+    Menentukan status lowongan berdasarkan:
+    1. Keyword penutupan.
+    2. Deadline pendaftaran.
+    3. Keyword aktif.
+    4. Usia postingan maksimal 14 hari.
 
-    ACTIVE:
-        Ada pernyataan eksplisit bahwa lowongan masih dibuka,
-        atau deadline yang terdeteksi belum lewat.
+    Status:
+        ACTIVE:
+            Posting maksimal 14 hari dan memiliki
+            bukti bahwa lowongan masih dibuka.
 
-    CLOSED:
-        Ada pernyataan eksplisit bahwa lowongan sudah tutup,
-        atau deadline yang terdeteksi sudah lewat.
+        REVIEW:
+            Posting maksimal 14 hari tanpa bukti status.
+            Atau posting lebih dari 14 hari tetapi
+            masih memiliki bukti bahwa lowongan aktif.
 
-    UNCERTAIN:
-        Tidak ada bukti yang cukup untuk menentukan status.
+        CLOSED:
+            Ada keyword penutupan.
+            Deadline sudah lewat.
+            Atau posting lebih dari 14 hari
+            tanpa bukti status.
 
-    Catatan:
-        Fungsi ini hanya menilai isi postingan.
-        Fungsi ini tidak bisa menjamin bahwa perusahaan
-        benar-benar masih menerima lamaran.
+    Parameter:
+        text       : Teks postingan Telegram.
+        posted_date: Tanggal publikasi pesan Telegram.
+
+    Return:
+        Dictionary berisi status, alasan, dan deadline.
     """
-
-    text_lower = text.lower()
 
     today = datetime.now(TIMEZONE).date()
 
-    # Periksa bukti bahwa lowongan sudah ditutup.
+    # Pastikan tanggal publikasi menggunakan timezone Jakarta.
+    if posted_date.tzinfo is not None:
+        posted_date = posted_date.astimezone(TIMEZONE)
+
+    posted_date = posted_date.date()
+
+    # Hitung usia postingan dalam hari.
+    age_days = (today - posted_date).days
+
+    text_lower = text.lower()
+
+    # --------------------------------------------------------
+    # 1. Periksa keyword penutupan.
+    # --------------------------------------------------------
+
     for keyword in CLOSED_KEYWORDS:
 
         if keyword in text_lower:
 
             return {
                 "status": "CLOSED",
-                "reason": f"Indikator penutupan: {keyword}",
-                "deadline": ""
+                "reason": f"Keyword penutupan ditemukan: {keyword}",
+                "deadline": "",
             }
 
-    # Periksa deadline jika tersedia.
+    # --------------------------------------------------------
+    # 2. Periksa deadline.
+    # --------------------------------------------------------
+
     deadline = detect_deadline(text)
 
     if deadline:
@@ -926,31 +953,94 @@ def detect_job_status(text):
             return {
                 "status": "CLOSED",
                 "reason": "Deadline pendaftaran sudah lewat",
-                "deadline": deadline.isoformat()
+                "deadline": deadline.isoformat(),
             }
+
+    # --------------------------------------------------------
+    # 3. Periksa bukti bahwa lowongan masih aktif.
+    # --------------------------------------------------------
+
+    has_open_keyword = any(
+        keyword in text_lower
+        for keyword in OPEN_KEYWORDS
+    )
+
+    has_valid_deadline = (
+        deadline is not None
+        and deadline >= today
+    )
+
+    has_active_evidence = (
+        has_open_keyword
+        or has_valid_deadline
+    )
+
+    # --------------------------------------------------------
+    # 4. Posting maksimal 14 hari + bukti aktif.
+    # --------------------------------------------------------
+
+    if age_days <= 14 and has_active_evidence:
+
+        reason = (
+            "Posting maksimal 14 hari "
+            "dan terdapat bukti lowongan aktif"
+        )
 
         return {
             "status": "ACTIVE",
-            "reason": "Deadline pendaftaran belum lewat",
-            "deadline": deadline.isoformat()
+            "reason": reason,
+            "deadline": (
+                deadline.isoformat()
+                if deadline
+                else ""
+            ),
         }
 
-    # Periksa bukti eksplisit bahwa lowongan masih dibuka.
-    for keyword in OPEN_KEYWORDS:
+    # --------------------------------------------------------
+    # 5. Posting maksimal 14 hari tanpa bukti status.
+    # --------------------------------------------------------
 
-        if keyword in text_lower:
+    if age_days <= 14:
 
-            return {
-                "status": "ACTIVE",
-                "reason": f"Indikator aktif: {keyword}",
-                "deadline": ""
-            }
+        return {
+            "status": "REVIEW",
+            "reason": (
+                "Posting maksimal 14 hari, "
+                "tetapi tidak ditemukan bukti status"
+            ),
+            "deadline": "",
+        }
 
-    # Jika tidak ada bukti, jangan menganggapnya aktif.
+    # --------------------------------------------------------
+    # 6. Posting lebih dari 14 hari tetapi memiliki bukti aktif.
+    # --------------------------------------------------------
+
+    if has_active_evidence:
+
+        return {
+            "status": "REVIEW",
+            "reason": (
+                f"Posting berusia {age_days} hari, "
+                "tetapi ditemukan bukti lowongan aktif"
+            ),
+            "deadline": (
+                deadline.isoformat()
+                if deadline
+                else ""
+            ),
+        }
+
+    # --------------------------------------------------------
+    # 7. Posting lebih dari 14 hari tanpa bukti status.
+    # --------------------------------------------------------
+
     return {
-        "status": "UNCERTAIN",
-        "reason": "Tidak ditemukan bukti status lowongan",
-        "deadline": ""
+        "status": "CLOSED",
+        "reason": (
+            f"Posting berusia {age_days} hari "
+            "tanpa bukti status lowongan"
+        ),
+        "deadline": "",
     }
 
 
@@ -1108,7 +1198,7 @@ def process_message(message, channel_name, source_url, extracted_text):
 
     text = clean_text(extracted_text)
 
-    status_data = detect_job_status(text)
+    status_data = detect_job_status(text, message.date)
 
     posted_date = (
         message.date.astimezone(TIMEZONE).strftime(
