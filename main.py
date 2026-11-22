@@ -64,6 +64,11 @@ REVIEW_FILE = os.path.join(
     "lowongan_review.csv"
 )
 
+CLOSED_FILE = os.path.join(
+    OUTPUT_DIR,
+    "lowongan_tutup.csv"
+)
+
 
 # ============================================================
 # 2. DAFTAR KEYWORD BLUE COLLAR
@@ -1090,7 +1095,7 @@ def prepare_csv():
         exist_ok=True
     )
 
-    for filename in [ACTIVE_FILE, REVIEW_FILE]:
+    for filename in [ACTIVE_FILE, REVIEW_FILE, CLOSED_FILE]:
 
         if not os.path.exists(filename):
 
@@ -1125,7 +1130,7 @@ def get_existing_urls():
 
     existing_urls = set()
 
-    for filename in [ACTIVE_FILE, REVIEW_FILE]:
+    for filename in [ACTIVE_FILE, REVIEW_FILE, CLOSED_FILE]:
 
         if not os.path.exists(filename):
             continue
@@ -1341,7 +1346,7 @@ async def crawl_telegram():
         "total": 0,
         "bluecollar": 0,
         "active": 0,
-        "uncertain": 0,
+        "review": 0,
         "closed": 0,
         "duplicate": 0,
     }
@@ -1410,26 +1415,34 @@ async def crawl_telegram():
                             text
                         )
         
-                        # Pisahkan berdasarkan status.
+                        # Pisahkan berdasarkan status lowongan.
                         if data["job_status"] == "ACTIVE":
                         
                             save_to_csv(data, ACTIVE_FILE)
                             stats["active"] += 1
-        
+
                             print(f"[ACTIVE] {data['job_title']}")
-        
-                        elif data["job_status"] == "UNCERTAIN":
+
+                        elif data["job_status"] == "REVIEW":
                         
                             save_to_csv(data, REVIEW_FILE)
-                            stats["uncertain"] += 1
-        
+                            stats["review"] += 1
+
                             print(f"[REVIEW] {data['job_title']}")
-        
+
+                        elif data["job_status"] == "CLOSED":
+                            
+                            save_to_csv(data, CLOSED_FILE)
+                            stats["closed"] += 1
+
+                            print(f"[CLOSED] {data['job_title']}")
+
                         else:
                         
-                            stats["closed"] += 1
-        
-                            print(f"[CLOSED] {data['job_title']}")
+                            print(
+                                f"[WARNING] Status tidak dikenal: "
+                                f"{data['job_status']}"
+                            )
         
                         existing_urls.add(source_url)
         
@@ -1455,7 +1468,7 @@ async def crawl_telegram():
     print(f"Total pesan diperiksa : {stats['total']}")
     print(f"Blue collar ditemukan : {stats['bluecollar']}")
     print(f"Lowongan aktif        : {stats['active']}")
-    print(f"Perlu review          : {stats['uncertain']}")
+    print(f"Perlu review          : {stats['review']}")
     print(f"Lowongan tutup        : {stats['closed']}")
     print(f"Duplikasi             : {stats['duplicate']}")
 
