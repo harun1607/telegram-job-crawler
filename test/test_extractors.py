@@ -374,34 +374,94 @@ class TestJobExtractors(unittest.TestCase):
         
         
     def test_category_ignores_unrelated_description(self):
-    
+
         text = """
         BARISTA
-    
+
         Kualifikasi:
         Memiliki pengalaman di bidang gudang.
         """
-    
+
         job_title = extract_job_title(text)
-    
+
         result = detect_job_category(job_title)
-    
+
         self.assertEqual(
             result,
             "Food & Beverage"
         )
-    
-    
+
+
     def test_category_ignores_unrelated_job_description(self):
-    
+
         job_title = "Sales Executive"
-    
+
         result = detect_job_category(job_title)
-    
+
         self.assertEqual(
             result,
             "Blue Collar Lainnya"
         )
+        
+        
+    def test_extract_job_title_with_recruitment_prefix(self):
+        text = """
+        Dibutuhkan segera Operator Produksi (Pria/Wanita)
+        Kirim CV sekarang.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(
+            result,
+            "Operator Produksi"
+        )
+
+    def test_ignore_job_title_in_experience_requirement(self):
+        text = """
+        OPEN RECRUITMENT
+
+        Kualifikasi:
+        Memiliki pengalaman sebagai Operator Produksi.
+        Kirim CV melalui WhatsApp.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(
+            result,
+            "Tidak diketahui"
+        )
+
+    def test_extract_job_title_with_recruitment_heading(self):
+        text = """
+        OPEN RECRUITMENT - DRIVER
+
+        Persyaratan:
+        Memiliki SIM A aktif.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(
+            result,
+            "DRIVER"
+        )
+
+    def test_extract_job_title_without_extra_information(self):
+        text = """
+        WAITER / WAITRESS
+
+        Kirim CV melalui WhatsApp.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(
+            result,
+            "WAITER / WAITRESS"
+        )
+
 
 
 

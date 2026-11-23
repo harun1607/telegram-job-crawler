@@ -515,7 +515,51 @@ def extract_job_title(text):
         )
 
         if has_job_title:
-            return line[:200]
+            candidate = line
+        
+            # Hapus awalan yang bersifat pengumuman rekrutmen
+            candidate = re.sub(
+                r"^(dibutuhkan(?:\s+segera)?|"
+                r"lowongan(?:\s+kerja)?|"
+                r"open\s+recruitment|"
+                r"we\s+are\s+hiring|"
+                r"dicari)\s*[-:]*\s*",
+                "",
+                candidate,
+                flags=re.IGNORECASE
+            )
+        
+            # Hapus keterangan gender
+            candidate = re.sub(
+                r"\s*\((?:pria|wanita|laki-laki|perempuan)"
+                r"(?:\s*/\s*(?:pria|wanita|laki-laki|perempuan))*\)\s*",
+                " ",
+                candidate,
+                flags=re.IGNORECASE
+            )
+        
+            candidate = candidate.strip(" -:|")
+        
+            # Cari keyword terpanjang agar posisi lebih spesifik
+            matched_keyword = None
+        
+            for keyword in sorted(
+                JOB_TITLE_KEYWORDS,
+                key=len,
+                reverse=True
+            ):
+                match = re.search(
+                    rf"(?<!\w){re.escape(keyword)}(?!\w)",
+                    candidate,
+                    flags=re.IGNORECASE
+                )
+        
+                if match:
+                    matched_keyword = match.group(0)
+                    break
+                
+            if matched_keyword:
+                return candidate[:200]
 
     # Jangan mengarang judul jika tidak ditemukan.
     return "Tidak diketahui"
