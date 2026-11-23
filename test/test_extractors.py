@@ -2,10 +2,7 @@ import os
 import sys
 import unittest
 
-from main import extract_age, extract_education
-
-# Gunakan dummy credential agar main.py bisa di-import
-# tanpa memerlukan credential Telegram sungguhan.
+# Atur dummy credential sebelum import main.py.
 os.environ.setdefault("API_ID", "12345")
 os.environ.setdefault("API_HASH", "dummy_hash")
 
@@ -17,7 +14,10 @@ sys.path.insert(
     )
 )
 
+# Import fungsi setelah konfigurasi selesai.
 from main import (
+    extract_age,
+    extract_education,
     extract_job_title,
     detect_job_category,
     extract_location,
@@ -228,48 +228,48 @@ class TestJobExtractors(unittest.TestCase):
         )
 
     def test_operator_age(self):
-    
+
         result = extract_age(self.operator_text)
-    
+
         self.assertEqual(result, (18, 30))
-    
-    
+
+
     def test_driver_age(self):
-    
+
         result = extract_age(self.driver_text)
-    
+
         self.assertEqual(result, (20, 40))
-    
-    
+
+
     def test_operator_education(self):
-    
+
         result = extract_education(self.operator_text)
-    
+
         self.assertEqual(result, "sma_smk")
-    
-    
+
+
     def test_driver_education(self):
-    
+
         result = extract_education(self.driver_text)
-    
+
         self.assertEqual(result, "smp")
-    
-    
+
+
     def test_missing_age(self):
-    
+
         result = extract_age(
             "Pendidikan minimal SMA sederajat"
         )
-    
+
         self.assertEqual(result, (None, None))
-    
-    
+
+
     def test_missing_education(self):
-    
+
         result = extract_education(
             "Dibutuhkan segera pekerja produksi"
         )
-    
+
         self.assertIsNone(result)
 
 if __name__ == "__main__":
