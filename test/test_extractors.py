@@ -25,6 +25,7 @@ from main import (
     extract_benefits,
     extract_application_method,
     extract_contact,
+    extract_salary,
 )
 
 
@@ -271,6 +272,45 @@ class TestJobExtractors(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+        
+    def test_salary_rupiah(self):
+        result = extract_salary("Gaji Rp5.000.000 per bulan")
+        self.assertEqual(result, "Rp5.000.000")
+
+    def test_salary_range(self):
+        result = extract_salary("Gaji Rp4.000.000 - Rp6.000.000")
+        self.assertEqual(
+            result,
+            "Rp4.000.000 | Rp6.000.000"
+        )
+
+    def test_salary_juta(self):
+        result = extract_salary("Gaji 5 juta per bulan")
+        self.assertEqual(result, "5 juta")
+
+    def test_salary_ribu(self):
+        result = extract_salary("Upah 150 ribu per hari")
+        self.assertEqual(result, "150 ribu")
+
+    def test_salary_umk(self):
+        result = extract_salary("Gaji sesuai UMK")
+        self.assertEqual(result, "UMK")
+
+    def test_salary_ump(self):
+        result = extract_salary("Gaji mengikuti UMP")
+        self.assertEqual(result, "UMP")
+
+    def test_salary_not_found(self):
+        result = extract_salary(
+            "Dibutuhkan operator produksi segera"
+        )
+        self.assertEqual(result, "Tidak diketahui")
+
+    def test_salary_ignores_unrelated_numbers(self):
+        result = extract_salary(
+            "Usia 18-30 tahun, kuota 20 orang"
+        )
+        self.assertEqual(result, "Tidak diketahui")
 
 if __name__ == "__main__":
 

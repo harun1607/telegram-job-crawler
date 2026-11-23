@@ -1069,21 +1069,33 @@ def detect_job_status(text, posted_date):
     # --------------------------------------------------------
     # 1. Normalisasi tanggal postingan
     # --------------------------------------------------------
-
+    
     if posted_date is None:
         return {
             "status": "REVIEW",
             "reason": "Tanggal postingan tidak tersedia",
             "deadline": "",
         }
-
-    if posted_date.tzinfo is not None:
-        posted_date = posted_date.astimezone(TIMEZONE)
-
-    posted_date = posted_date.date()
-
+    
+    # Jika berupa datetime, sesuaikan timezone terlebih dahulu.
+    if isinstance(posted_date, datetime):
+    
+        if posted_date.tzinfo is not None:
+            posted_date = posted_date.astimezone(TIMEZONE)
+    
+        posted_date = posted_date.date()
+    
+    # Jika sudah berupa date, tidak perlu dikonversi.
+    elif isinstance(posted_date, date):
+        pass
+    
+    else:
+        raise TypeError(
+            "posted_date harus berupa datetime, date, atau None"
+        )
+    
     age_days = (today - posted_date).days
-
+    
     # Tanggal masa depan tidak boleh dianggap aktif.
     if age_days < 0:
         return {
