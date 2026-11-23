@@ -100,7 +100,7 @@ class TestJobExtractors(unittest.TestCase):
     def test_operator_category(self):
 
         result = detect_job_category(
-            self.operator_text
+            extract_job_title(self.operator_text)
         )
 
         self.assertEqual(
@@ -111,7 +111,7 @@ class TestJobExtractors(unittest.TestCase):
     def test_driver_category(self):
 
         result = detect_job_category(
-            self.driver_text
+            extract_job_title(self.driver_text)
         )
 
         self.assertEqual(
@@ -371,6 +371,38 @@ class TestJobExtractors(unittest.TestCase):
             result,
             "Teknisi Instalasi Listrik PLTS & BESS"
         )
+        
+        
+    def test_category_ignores_unrelated_description(self):
+    
+        text = """
+        BARISTA
+    
+        Kualifikasi:
+        Memiliki pengalaman di bidang gudang.
+        """
+    
+        job_title = extract_job_title(text)
+    
+        result = detect_job_category(job_title)
+    
+        self.assertEqual(
+            result,
+            "Food & Beverage"
+        )
+    
+    
+    def test_category_ignores_unrelated_job_description(self):
+    
+        job_title = "Sales Executive"
+    
+        result = detect_job_category(job_title)
+    
+        self.assertEqual(
+            result,
+            "Blue Collar Lainnya"
+        )
+
 
 
 if __name__ == "__main__":

@@ -343,17 +343,14 @@ def is_bluecollar_job(text):
 # 6. FUNGSI KATEGORISASI PEKERJAAN
 # ============================================================
 
-def detect_job_category(text):
+
+def detect_job_category(job_title):
     """
-    Menentukan kategori pekerjaan berdasarkan keyword.
+    Menentukan kategori berdasarkan judul pekerjaan.
 
-    Contoh:
-        'Operator Produksi' -> Operator Produksi
-        'Helper Gudang'     -> Gudang
-        'Kurir Motor'       -> Transportasi
-
-    Jika tidak ditemukan kategori spesifik,
-    hasilnya menjadi Blue Collar Lainnya.
+    Kategori tidak ditentukan dari seluruh isi postingan,
+    agar keyword dalam persyaratan tidak menyebabkan
+    kesalahan klasifikasi.
     """
 
     categories = {
@@ -361,15 +358,11 @@ def detect_job_category(text):
             "operator produksi",
             "staff produksi",
             "pekerja pabrik",
-            "manufaktur",
         ],
 
         "Gudang": [
             "helper gudang",
             "warehouse",
-            "gudang",
-            "packing",
-            "packaging",
             "picker",
             "packer",
             "bongkar muat",
@@ -402,6 +395,10 @@ def detect_job_category(text):
             "barista",
             "waiter",
             "waitress",
+            "kitchen crew",
+            "front crew",
+            "crew store",
+            "crew outlet",
             "koki",
             "steward",
         ],
@@ -411,16 +408,17 @@ def detect_job_category(text):
         ],
     }
 
-    text_lower = text.lower()
+    title_lower = job_title.lower()
 
     for category, keywords in categories.items():
 
         for keyword in keywords:
 
-            if keyword in text_lower:
+            if keyword in title_lower:
                 return category
 
     return "Blue Collar Lainnya"
+
 
 
 # ============================================================
@@ -1581,12 +1579,15 @@ def process_message(message, channel_name, source_url, extracted_text):
             employment_type = keyword
             break
 
+        job_title = extract_job_title(text)
+
     # Susun seluruh data menjadi satu dictionary.
     data = {
         "job_title": extract_job_title(text),
         "company_name": extract_company(text),
         "location": extract_location(text),
-        "job_category": detect_job_category(text),
+        "job_title": job_title,
+        "job_category": detect_job_category(job_title),
         "description": text,
         "gender": gender,
         "min_age": min_age if min_age is not None else "",
