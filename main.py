@@ -114,6 +114,48 @@ BLUECOLLAR_KEYWORDS = [
     "sales lapangan",
 ]
 
+
+# Keyword khusus untuk mendeteksi nama jabatan.
+# Tidak semua keyword filter blue collar merupakan nama jabatan.
+
+JOB_TITLE_KEYWORDS = [
+    "operator produksi",
+    "operator",
+    "helper gudang",
+    "helper",
+    "warehouse",
+    "picker",
+    "packer",
+    "kurir",
+    "delivery driver",
+    "driver",
+    "supir",
+    "security",
+    "satpam",
+    "cleaning service",
+    "cleaner",
+    "teknisi",
+    "mekanik",
+    "maintenance",
+    "barista",
+    "waiter",
+    "waitress",
+    "kitchen crew",
+    "front crew",
+    "crew store",
+    "crew outlet",
+    "crew event",
+    "staff produksi",
+    "pekerja pabrik",
+    "bongkar muat",
+    "buruh",
+    "penjahit",
+    "koki",
+    "steward",
+    "sales lapangan",
+]
+
+
 # Keyword ini menjadi bukti bahwa lowongan sudah ditutup.
 CLOSED_KEYWORDS = [
     "lowongan sudah ditutup",
@@ -385,20 +427,46 @@ def detect_job_category(text):
 # 7. FUNGSI EKSTRAKSI JUDUL PEKERJAAN
 # ============================================================
 
+
 def extract_job_title(text):
     """
-    Mengambil kemungkinan judul pekerjaan.
+    Mengekstrak kemungkinan judul pekerjaan.
 
-    Menghapus prefix nomor urut dan karakter dekoratif
-    sebelum mengembalikan judul.
-
-    Contoh:
-        1. Operator Produksi -> Operator Produksi
-        - Kurir Motor       -> Kurir Motor
-        # Driver            -> Driver
+    Prinsip:
+    1. Menggunakan keyword jabatan spesifik.
+    2. Mengabaikan baris persyaratan dan kualifikasi.
+    3. Mengabaikan potongan teks OCR yang tidak relevan.
+    4. Tidak menggunakan fallback berupa baris pertama.
     """
 
     lines = text.splitlines()
+
+    # Kata yang menunjukkan bahwa baris merupakan
+    # persyaratan, kualifikasi, atau informasi lain.
+    excluded_keywords = [
+        "pengalaman",
+        "kualifikasi",
+        "persyaratan",
+        "pendidikan",
+        "lulusan",
+        "minimal",
+        "maksimal",
+        "memiliki",
+        "mampu",
+        "bersedia",
+        "diutamakan",
+        "bidang",
+        "tahun",
+        "kirim",
+        "scan",
+        "cv",
+        "lamaran",
+        "hubungi",
+        "gaji",
+        "benefit",
+        "tanggung jawab",
+        "deskripsi pekerjaan",
+    ]
 
     for line in lines:
 
@@ -407,51 +475,53 @@ def extract_job_title(text):
         if not line:
             continue
 
-        # Hapus nomor urut di awal baris.
+        # Hapus nomor urut.
         line = re.sub(
             r"^\d+[.)]\s*",
             "",
             line
         )
 
-        # Hapus karakter dekoratif.
+        # Hapus karakter dekoratif dan Markdown.
         line = re.sub(
-            r"^[#\-*•\s]+",
+            r"^[#\-*•▪●\s]+",
             "",
             line
         )
 
+        line = re.sub(r"[*_`]", "", line)
+
+        # Rapikan spasi.
+        line = re.sub(r"\s+", " ", line).strip()
+
         line_lower = line.lower()
 
+        # Abaikan baris yang terlalu panjang.
+        if len(line) > 120:
+            continue
+
+        # Abaikan baris persyaratan dan informasi non-jabatan.
         if any(
             keyword in line_lower
-            for keyword in BLUECOLLAR_KEYWORDS
+            for keyword in excluded_keywords
         ):
+            continue
 
+        # Periksa apakah baris mengandung keyword jabatan.
+        has_job_title = any(
+            re.search(
+                rf"(?<!\w){re.escape(keyword)}(?!\w)",
+                line_lower
+            )
+            for keyword in JOB_TITLE_KEYWORDS
+        )
+
+        if has_job_title:
             return line[:200]
 
-    # Fallback jika tidak ada keyword pekerjaan.
-    for line in lines:
-
-        line = line.strip()
-
-        if line:
-
-            line = re.sub(
-                r"^\d+[.)]\s*",
-                "",
-                line
-            )
-
-            line = re.sub(
-                r"^[#\-*•\s]+",
-                "",
-                line
-            )
-
-            return line[:200]
-
+    # Jangan mengarang judul jika tidak ditemukan.
     return "Tidak diketahui"
+
 
 
 # ============================================================

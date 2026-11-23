@@ -311,6 +311,67 @@ class TestJobExtractors(unittest.TestCase):
             "Usia 18-30 tahun, kuota 20 orang"
         )
         self.assertEqual(result, "Tidak diketahui")
+        
+        
+    def test_ignore_construction_experience_as_job_title(self):
+        text = """
+        PT Tangguh Niaga Karya
+
+        Kualifikasi:
+        Pengalaman di bidang teknik,
+        konstruksi/bangunan.
+
+        Scan dan kirim CV anda.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(result, "Tidak diketahui")
+
+    def test_ignore_ocr_requirement_as_job_title(self):
+        text = """
+        PT Grha Sinar Arya
+
+        Kualifikasi:
+        Pengalaman minimal 2 tahun
+        dalam bidang konstruksi.
+
+        Scan dan kirim CV anda.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(result, "Tidak diketahui")
+
+    def test_extract_waiter_title(self):
+        text = """
+        OPEN RECRUITMENT
+
+        WAITER / WAITRESS
+
+        Kirim CV melalui WhatsApp.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(result, "WAITER / WAITRESS")
+
+    def test_extract_technician_title(self):
+        text = """
+        PT ENTROPYTECH
+
+        Teknisi Instalasi Listrik PLTS & BESS
+
+        Kirim CV dan sertifikat.
+        """
+
+        result = extract_job_title(text)
+
+        self.assertEqual(
+            result,
+            "Teknisi Instalasi Listrik PLTS & BESS"
+        )
+
 
 if __name__ == "__main__":
 
