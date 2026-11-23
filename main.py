@@ -389,16 +389,13 @@ def extract_job_title(text):
     """
     Mengambil kemungkinan judul pekerjaan.
 
-    Fungsi ini mencari baris pertama yang mengandung
-    keyword pekerjaan.
+    Menghapus prefix nomor urut dan karakter dekoratif
+    sebelum mengembalikan judul.
 
-    Jika tidak ditemukan, fungsi menggunakan baris
-    pertama sebagai alternatif.
-
-    Catatan:
-        Hasilnya masih berupa ekstraksi sederhana.
-        Perlu pemeriksaan untuk postingan yang memiliki
-        banyak posisi pekerjaan sekaligus.
+    Contoh:
+        1. Operator Produksi -> Operator Produksi
+        - Kurir Motor       -> Kurir Motor
+        # Driver            -> Driver
     """
 
     lines = text.splitlines()
@@ -410,6 +407,20 @@ def extract_job_title(text):
         if not line:
             continue
 
+        # Hapus nomor urut di awal baris.
+        line = re.sub(
+            r"^\d+[.)]\s*",
+            "",
+            line
+        )
+
+        # Hapus karakter dekoratif.
+        line = re.sub(
+            r"^[#\-*•\s]+",
+            "",
+            line
+        )
+
         line_lower = line.lower()
 
         if any(
@@ -417,17 +428,27 @@ def extract_job_title(text):
             for keyword in BLUECOLLAR_KEYWORDS
         ):
 
-            return re.sub(
-                r"^[#\-*•\s]+",
-                "",
-                line
-            )[:200]
+            return line[:200]
 
+    # Fallback jika tidak ada keyword pekerjaan.
     for line in lines:
 
         line = line.strip()
 
         if line:
+
+            line = re.sub(
+                r"^\d+[.)]\s*",
+                "",
+                line
+            )
+
+            line = re.sub(
+                r"^[#\-*•\s]+",
+                "",
+                line
+            )
+
             return line[:200]
 
     return "Tidak diketahui"
@@ -571,6 +592,130 @@ def extract_salary(text):
 
     return "Tidak diketahui"
 
+# ============================================================
+#  FUNGSI EKSTRAKSI UMUR
+# ============================================================
+
+def extract_age(text):
+    """
+    Mengekstrak batas usia minimum dan maksimum.
+
+    Contoh:
+        Usia 18-30 tahun       -> (18, 30)
+        Usia 20–40 tahun       -> (20, 40)
+        Minimal usia 18 tahun  -> (18, None)
+        Usia maksimal 25 tahun -> (None, 25)
+
+    Jika informasi tidak ditemukan, hasilnya None.
+    """
+
+    text_lower = text.lower()
+
+    min_age = None
+    max_age = None
+
+    # Pola rentang usia.
+    range_pattern = re.search(
+        r"\b(?:usia|umur)\s*"
+        r"(\d{1,2})\s*"
+        r"(?:-|–|sampai|s/d)\s*"
+        r"(\d{1,2})\s*tahun\b",
+        text_lower
+    )
+
+    if range_pattern:
+        min_age = int(range_pattern.group(1))
+        max_age = int(range_pattern.group(2))
+
+        return min_age, max_age
+
+    # Pola usia minimum.
+    min_pattern = re.search(
+        r"\b(?:minimal|min\.?|usia minimal|umur minimal)"
+        r"\s*(?:usia|umur)?\s*(\d{1,2})\s*tahun\b",
+        text_lower
+    )
+
+    # Pola usia maksimum.
+    max_pattern = re.search(
+        r"\b(?:maksimal|max\.?|usia maksimal|umur maksimal)"
+        r"\s*(?:usia|umur)?\s*(\d{1,2})\s*tahun\b",
+        text_lower
+    )
+
+    if min_pattern:
+        min_age = int(min_pattern.group(1))
+
+    if max_pattern:
+        max_age = int(max_pattern.group(1))
+
+    return min_age, max_age
+
+# ============================================================
+# FUNGSI EKSTRAKSI PENDIDIKAN 
+# ============================================================
+
+def extract_education(text):
+    """
+    Mengekstrak pendidikan minimum.
+
+    Normalisasi:
+        SMP/SMA       -> smp
+        SMA/SMK       -> sma_smk
+        SMP           -> smp
+        SMA           -> sma_smk
+        SMK           -> sma_smk
+        SD            -> sd
+        D3            -> d3
+        S1            -> s1
+
+    Mengutamakan tingkat pendidikan terendah
+    jika posting menyebut beberapa jenjang.
+    """
+
+    text_lower = text.lower()
+
+    education_patterns = [
+        # Kombinasi jenjang. Periksa sebelum jenjang tunggal.
+        (
+            r"\bsmp\s*/\s*sma\b",
+            "smp"
+        ),
+        (
+            r"\bsma\s*/\s*smk\b|\bsmk\s*/\s*sma\b",
+            "sma_smk"
+        ),
+
+        # Jenjang tunggal.
+        (
+            r"\b(?:smp|sekolah menengah pertama)\b",
+            "smp"
+        ),
+        (
+            r"\b(?:sma|smk|sekolah menengah atas|sekolah menengah kejuruan)\b",
+            "sma_smk"
+        ),
+        (
+            r"\b(?:sd|sekolah dasar)\b",
+            "sd"
+        ),
+        (
+            r"\b(?:d3|diploma 3)\b",
+            "d3"
+        ),
+        (
+            r"\b(?:s1|sarjana)\b",
+            "s1"
+        ),
+    ]
+
+    for pattern, education in education_patterns:
+
+        if re.search(pattern, text_lower):
+            return education
+
+    return None
+
 
 # ============================================================
 # 11. FUNGSI EKSTRAKSI PERSYARATAN
@@ -636,19 +781,28 @@ def extract_requirements(text):
 
 def extract_benefits(text):
     """
-    Mendeteksi fasilitas atau benefit yang diberikan
-    perusahaan kepada pelamar.
+    Mendeteksi fasilitas atau benefit pekerjaan.
 
-    Informasi yang dicari:
-        BPJS, uang makan, uang transportasi,
-        lembur, THR, dan fasilitas lainnya.
+    Benefit yang dideteksi:
+        BPJS
+        Uang makan
+        Transportasi
+        BBM
+        Lembur
+        THR
+        Mess
+        Tunjangan
+        Seragam
 
-    Hasil disimpan sebagai daftar teks.
+    Insentif akan tetap terdeteksi untuk sementara,
+    tetapi nantinya perlu dipisahkan dari komponen benefit
+    ke komponen kompensasi.
     """
 
     benefits = [
         "BPJS Kesehatan",
         "BPJS Ketenagakerjaan",
+        "BPJS",
         "uang makan",
         "uang transport",
         "uang transportasi",
@@ -659,6 +813,8 @@ def extract_benefits(text):
         "tunjangan",
         "insentif",
         "seragam",
+        "BBM",
+        "bahan bakar",
     ]
 
     text_lower = text.lower()
@@ -668,10 +824,14 @@ def extract_benefits(text):
     for benefit in benefits:
 
         if benefit.lower() in text_lower:
+
             detected.append(benefit)
 
     if detected:
-        return " | ".join(dict.fromkeys(detected))
+
+        return " | ".join(
+            dict.fromkeys(detected)
+        )
 
     return "Tidak diketahui"
 
@@ -1303,37 +1463,10 @@ def process_message(message, channel_name, source_url, extracted_text):
         )
 
     # Ekstraksi usia.
-    age_matches = re.findall(
-        r"usia\s*(?:minimal|min\.?)?\s*(\d{1,2})"
-        r"(?:\s*[-–sampai]+\s*(\d{1,2}))?",
-        text,
-        re.IGNORECASE
-    )
-
-    min_age = ""
-    max_age = ""
-
-    if age_matches:
-
-        first_age = age_matches[0]
-
-        min_age = first_age[0]
-        max_age = first_age[1] or ""
+    min_age, max_age = extract_age(text)
 
     # Ekstraksi pendidikan.
-    education = "Tidak diketahui"
-
-    education_pattern = re.search(
-        r"(?:minimal|min\.?|pendidikan)\s*"
-        r"(?:pendidikan\s*)?"
-        r"(SD|SMP|SMA|SMK|D3|S1|D4)"
-        r"(?:\s*/\s*(SMA|SMK))?",
-        text,
-        re.IGNORECASE
-    )
-
-    if education_pattern:
-        education = education_pattern.group(0)
+    education = extract_education(text) or "Tidak diketahui"
 
     # Ekstraksi jenis pekerjaan.
     employment_type = "Tidak diketahui"
@@ -1362,8 +1495,8 @@ def process_message(message, channel_name, source_url, extracted_text):
         "job_category": detect_job_category(text),
         "description": text,
         "gender": gender,
-        "min_age": min_age,
-        "max_age": max_age,
+        "min_age": min_age if min_age is not None else "",
+        "max_age": max_age if max_age is not None else "",
         "education": education,
         "requirements": extract_requirements(text),
         "salary": extract_salary(text),
