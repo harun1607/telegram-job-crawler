@@ -1049,54 +1049,56 @@ def detect_deadline(text):
 
 def detect_job_status(text, posted_date):
     """
-    Menentukan status lowongan berdasarkan umur postingan,
-    bukti rekrutmen, dan informasi penutupan.
+    Menentukan status lowongan berdasarkan bukti yang ditemukan.
 
-    Aturan umur:
-        0-10 hari  : ACTIVE jika ada bukti rekrutmen.
-        0-10 hari  : REVIEW jika bukti tidak cukup.
-        11-20 hari : REVIEW.
-        21-30 hari : REVIEW jika ada indikasi rekrutmen/kontak.
-        >30 hari   : CLOSED (melewati batas umur crawler).
+    Aturan:
+        CLOSED:
+            - Ada keyword penutupan eksplisit.
+            - Deadline sudah lewat.
 
-    Penutupan eksplisit dan deadline lewat selalu
-    mengalahkan aturan umur postingan.
+        ACTIVE:
+            - Ada keyword eksplisit bahwa lowongan masih dibuka.
+            - Atau postingan relatif baru memiliki bukti
+              rekrutmen dan instruksi melamar.
+
+        REVIEW:
+            - Bukti status tidak cukup.
+            - Postingan terlalu lama untuk dikategorikan ACTIVE
+              berdasarkan heuristik umur.
+            - Informasi tanggal tidak tersedia.
     """
 
     today = datetime.now(TIMEZONE).date()
     text_lower = text.lower()
 
     # --------------------------------------------------------
-    # 1. Normalisasi tanggal postingan
+    # 1. Validasi tanggal postingan
     # --------------------------------------------------------
-    
+
     if posted_date is None:
         return {
             "status": "REVIEW",
             "reason": "Tanggal postingan tidak tersedia",
             "deadline": "",
         }
-    
-    # Jika berupa datetime, sesuaikan timezone terlebih dahulu.
+
     if isinstance(posted_date, datetime):
-    
+
         if posted_date.tzinfo is not None:
             posted_date = posted_date.astimezone(TIMEZONE)
-    
+
         posted_date = posted_date.date()
-    
-    # Jika sudah berupa date, tidak perlu dikonversi.
+
     elif isinstance(posted_date, date):
         pass
-    
+
     else:
         raise TypeError(
             "posted_date harus berupa datetime, date, atau None"
         )
-    
+
     age_days = (today - posted_date).days
-    
-    # Tanggal masa depan tidak boleh dianggap aktif.
+
     if age_days < 0:
         return {
             "status": "REVIEW",
@@ -1105,10 +1107,11 @@ def detect_job_status(text, posted_date):
         }
 
     # --------------------------------------------------------
-    # 2. Periksa bukti penutupan eksplisit
+    # 2. Periksa penutupan eksplisit
     # --------------------------------------------------------
 
     for keyword in CLOSED_KEYWORDS:
+
         if keyword in text_lower:
             return {
                 "status": "CLOSED",
@@ -1136,7 +1139,7 @@ def detect_job_status(text, posted_date):
     )
 
     # --------------------------------------------------------
-    # 4. Keyword bukti rekrutmen dan instruksi melamar
+    # 4. Bukti rekrutmen
     # --------------------------------------------------------
 
     recruitment_keywords = [
@@ -1181,8 +1184,42 @@ def detect_job_status(text, posted_date):
         for keyword in application_keywords
     )
 
-    # Bukti minimum untuk mempertahankan postingan lama
-    # dalam daftar review.
+    # --------------------------------------------------------
+    # 5. Bukti eksplisit lowongan masih dibuka
+    # --------------------------------------------------------
+
+    has_explicit_open_evidence = any(
+    keyword in text_lower
+    for keyword in OPEN_KEYWORDS
+    )
+
+    # Deteksi variasi kalimat:
+    # "Lowongan operator produksi masih dibuka"
+    has_explicit_open_evidence = (
+        has_explicit_open_evidence
+        or bool(
+            re.search(
+                r"\b(?:lowongan|lamaran|pendaftaran)"
+                r"\b.{0,80}\bmasih\s+dibuka\b",
+                text_lower
+            )
+        )
+    )
+
+    if has_explicit_open_evidence:
+        return {
+            "status": "ACTIVE",
+            "reason": (
+                "Keyword eksplisit bahwa lowongan "
+                "masih dibuka ditemukan"
+            ),
+            "deadline": deadline_value,
+        }
+
+    # --------------------------------------------------------
+    # 6. Bukti kontak
+    # --------------------------------------------------------
+
     has_contact = bool(
         re.search(
             r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",
@@ -1203,50 +1240,43 @@ def detect_job_status(text, posted_date):
         )
     )
 
-    has_active_evidence = (
-        has_recruitment_evidence
-        or has_application_evidence
-        or (
-            deadline is not None
-            and deadline >= today
-        )
-    )
-
-    has_review_evidence = (
-        has_active_evidence
-        or has_contact
-    )
-
     # --------------------------------------------------------
-    # 5. Posting berumur 0-10 hari
+    # 7. Penentuan ACTIVE
     # --------------------------------------------------------
 
     if age_days <= 10:
 
-        if has_active_evidence:
+        if (
+            has_recruitment_evidence
+            and has_application_evidence
+        ):
             return {
                 "status": "ACTIVE",
                 "reason": (
                     f"Posting berusia {age_days} hari "
-                    "dan memiliki bukti rekrutmen"
+                    "dengan bukti rekrutmen dan "
+                    "instruksi melamar"
                 ),
                 "deadline": deadline_value,
             }
+
+    # --------------------------------------------------------
+    # 8. Penentuan REVIEW
+    # --------------------------------------------------------
+
+    if age_days <= 10:
 
         return {
             "status": "REVIEW",
             "reason": (
                 f"Posting berusia {age_days} hari, "
-                "tetapi bukti rekrutmen belum cukup"
+                "tetapi bukti status aktif belum cukup"
             ),
             "deadline": deadline_value,
         }
 
-    # --------------------------------------------------------
-    # 6. Posting berumur 11-20 hari
-    # --------------------------------------------------------
-
     if age_days <= 20:
+
         return {
             "status": "REVIEW",
             "reason": (
@@ -1256,41 +1286,23 @@ def detect_job_status(text, posted_date):
             "deadline": deadline_value,
         }
 
-    # --------------------------------------------------------
-    # 7. Posting berumur 21-30 hari
-    # --------------------------------------------------------
-
     if age_days <= 30:
 
-        if has_review_evidence:
-            return {
-                "status": "REVIEW",
-                "reason": (
-                    f"Posting berusia {age_days} hari "
-                    "dan masih memiliki indikasi rekrutmen "
-                    "atau informasi kontak"
-                ),
-                "deadline": deadline_value,
-            }
-
         return {
-            "status": "CLOSED",
+            "status": "REVIEW",
             "reason": (
-                f"Posting berusia {age_days} hari "
-                "tanpa indikasi rekrutmen atau kontak"
+                f"Posting berusia {age_days} hari. "
+                "Status tidak dapat dipastikan "
+                "berdasarkan umur postingan"
             ),
             "deadline": deadline_value,
         }
 
-    # --------------------------------------------------------
-    # 8. Posting lebih dari 30 hari
-    # --------------------------------------------------------
-
     return {
-        "status": "CLOSED",
+        "status": "REVIEW",
         "reason": (
-            f"Posting berusia {age_days} hari, "
-            "melewati batas umur crawler 30 hari"
+            f"Posting berusia {age_days} hari. "
+            "Tidak ada bukti penutupan eksplisit"
         ),
         "deadline": deadline_value,
     }

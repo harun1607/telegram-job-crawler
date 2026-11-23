@@ -1,4 +1,3 @@
-
 import os
 import sys
 import unittest
@@ -29,9 +28,13 @@ class TestJobStatus(unittest.TestCase):
     def setUp(self):
         self.today = datetime.now(TIMEZONE).date()
 
+    # ========================================================
+    # 1. VALIDASI TANGGAL POSTINGAN
+    # ========================================================
+
     def test_missing_posted_date(self):
         result = detect_job_status(
-            "Dibutuhkan operator produksi",
+            "Dibutuhkan operator produksi. Kirim CV.",
             None
         )
 
@@ -41,15 +44,33 @@ class TestJobStatus(unittest.TestCase):
         future_date = self.today + timedelta(days=1)
 
         result = detect_job_status(
-            "Dibutuhkan operator produksi",
+            "Dibutuhkan operator produksi. Kirim CV.",
             future_date
         )
 
         self.assertEqual(result["status"], "REVIEW")
 
-    def test_recent_job_with_recruitment_evidence(self):
+    # ========================================================
+    # 2. POSTINGAN BARU
+    # ========================================================
+
+    def test_recent_job_with_recruitment_and_application(self):
         result = detect_job_status(
-            "Dibutuhkan operator produksi. Kirim CV sekarang.",
+            (
+                "Dibutuhkan operator produksi. "
+                "Kirim CV sekarang melalui WhatsApp."
+            ),
+            self.today
+        )
+
+        self.assertEqual(result["status"], "ACTIVE")
+
+    def test_recent_job_with_explicit_open_keyword(self):
+        result = detect_job_status(
+            (
+                "Lowongan operator produksi masih dibuka. "
+                "Silakan kirim lamaran."
+            ),
             self.today
         )
 
@@ -62,6 +83,74 @@ class TestJobStatus(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "REVIEW")
+
+    def test_recent_job_with_contact_only(self):
+        result = detect_job_status(
+            (
+                "Lowongan operator produksi. "
+                "Hubungi WhatsApp 081234567890."
+            ),
+            self.today
+        )
+
+        self.assertEqual(result["status"], "REVIEW")
+
+    # ========================================================
+    # 3. POSTINGAN LAMA
+    # ========================================================
+
+    def test_job_age_11_to_20_days(self):
+        posted_date = self.today - timedelta(days=15)
+
+        result = detect_job_status(
+            (
+                "Dibutuhkan operator produksi. "
+                "Kirim CV sekarang."
+            ),
+            posted_date
+        )
+
+        self.assertEqual(result["status"], "REVIEW")
+
+    def test_job_age_21_to_30_days_with_contact(self):
+        posted_date = self.today - timedelta(days=25)
+
+        result = detect_job_status(
+            (
+                "Lowongan operator produksi. "
+                "Hubungi WhatsApp."
+            ),
+            posted_date
+        )
+
+        self.assertEqual(result["status"], "REVIEW")
+
+    def test_job_age_21_to_30_days_without_evidence(self):
+        posted_date = self.today - timedelta(days=25)
+
+        result = detect_job_status(
+            "Informasi pekerjaan operator produksi.",
+            posted_date
+        )
+
+        self.assertEqual(result["status"], "REVIEW")
+
+    def test_job_age_over_30_days(self):
+        posted_date = self.today - timedelta(days=31)
+
+        result = detect_job_status(
+            (
+                "Dibutuhkan operator produksi. "
+                "Kirim CV sekarang."
+            ),
+            posted_date
+        )
+
+        self.assertEqual(result["status"], "REVIEW")
+
+    # ========================================================
+    # 4. DETEKSI PENUTUPAN LOWONGAN
+    # ========================================================
 
     def test_explicitly_closed_job(self):
         result = detect_job_status(
@@ -86,7 +175,11 @@ class TestJobStatus(unittest.TestCase):
 
         self.assertEqual(result["status"], "CLOSED")
 
-    def test_future_deadline(self):
+    # ========================================================
+    # 5. DEADLINE YANG BELUM LEWAT
+    # ========================================================
+
+    def test_future_deadline_without_application_evidence(self):
         future_deadline = self.today + timedelta(days=5)
 
         deadline_text = (
@@ -99,47 +192,23 @@ class TestJobStatus(unittest.TestCase):
             self.today
         )
 
+        self.assertEqual(result["status"], "REVIEW")
+
+    def test_future_deadline_with_application_evidence(self):
+        future_deadline = self.today + timedelta(days=5)
+
+        deadline_text = (
+            f"Dibutuhkan operator produksi. "
+            f"Kirim CV sekarang. "
+            f"Deadline: {future_deadline.strftime('%d-%m-%Y')}"
+        )
+
+        result = detect_job_status(
+            deadline_text,
+            self.today
+        )
+
         self.assertEqual(result["status"], "ACTIVE")
-
-    def test_job_age_11_to_20_days(self):
-        posted_date = self.today - timedelta(days=15)
-
-        result = detect_job_status(
-            "Dibutuhkan operator produksi. Kirim CV.",
-            posted_date
-        )
-
-        self.assertEqual(result["status"], "REVIEW")
-
-    def test_job_age_21_to_30_days_with_contact(self):
-        posted_date = self.today - timedelta(days=25)
-
-        result = detect_job_status(
-            "Lowongan operator produksi. Hubungi WhatsApp.",
-            posted_date
-        )
-
-        self.assertEqual(result["status"], "REVIEW")
-
-    def test_job_age_21_to_30_days_without_evidence(self):
-        posted_date = self.today - timedelta(days=25)
-
-        result = detect_job_status(
-            "Informasi pekerjaan operator produksi.",
-            posted_date
-        )
-
-        self.assertEqual(result["status"], "CLOSED")
-
-    def test_job_age_over_30_days(self):
-        posted_date = self.today - timedelta(days=31)
-
-        result = detect_job_status(
-            "Dibutuhkan operator produksi. Kirim CV sekarang.",
-            posted_date
-        )
-
-        self.assertEqual(result["status"], "CLOSED")
 
 
 class TestDeadlineExtractor(unittest.TestCase):
@@ -150,7 +219,11 @@ class TestDeadlineExtractor(unittest.TestCase):
         )
 
         from datetime import date
-        self.assertEqual(result, date(2026, 11, 30))
+
+        self.assertEqual(
+            result,
+            date(2026, 11, 30)
+        )
 
     def test_deadline_month_name(self):
         result = detect_deadline(
@@ -158,7 +231,11 @@ class TestDeadlineExtractor(unittest.TestCase):
         )
 
         from datetime import date
-        self.assertEqual(result, date(2026, 11, 30))
+
+        self.assertEqual(
+            result,
+            date(2026, 11, 30)
+        )
 
     def test_date_without_deadline_label(self):
         result = detect_deadline(
