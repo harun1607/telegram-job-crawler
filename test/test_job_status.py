@@ -255,7 +255,7 @@ class TestJobStatus(unittest.TestCase):
 
     def test_closed_keyword_without_other_evidence(self):
         result = detect_job_status(
-            "Informasi lowongan operator produksi sudah ditutup.",
+            "Informasi lowongan sudah ditutup.",
             self.today
         )
 
@@ -295,10 +295,5 @@ class TestDeadlineExtractor(unittest.TestCase):
         self.assertIsNone(result)
         
         
-    
-    
-
-
-
 if __name__ == "__main__":
     unittest.main()
