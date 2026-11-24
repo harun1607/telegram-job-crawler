@@ -1853,7 +1853,7 @@ async def crawl_telegram():
 
     prepare_csv()
 
-    existing_urls = get_existing_jobs()
+    existing_jobs = get_existing_jobs()
     
 
     # Penghitung hasil crawling.
@@ -1917,13 +1917,6 @@ async def crawl_telegram():
                             f"{message.id}"
                         )
         
-                        # Periksa duplikasi.
-                        if source_url in existing_urls:
-                            print(f"[DUPLICATE] {source_url}")
-                            stats["duplicate"] += 1
-                            continue
-                        
-                        print(f"[NEW] {source_url}")
                         
                         # Proses data lowongan.
                         data = process_message(
@@ -1932,38 +1925,39 @@ async def crawl_telegram():
                             source_url,
                             text
                         )
-        
-                        # Pisahkan berdasarkan status lowongan.
-                        if data["job_status"] == "ACTIVE":
-                        
-                            save_to_csv(data, ACTIVE_FILE)
-                            stats["active"] += 1
 
-                            print(f"[ACTIVE] {data['job_title']}")
+                        # Simpan atau perbarui menggunakan UPSERT.
+                        result = upsert_to_csv(data, existing_jobs)
 
-                        elif data["job_status"] == "REVIEW":
-                        
-                            save_to_csv(data, REVIEW_FILE)
-                            stats["review"] += 1
-
-                            print(f"[REVIEW] {data['job_title']}")
-
-                        elif data["job_status"] == "CLOSED":
-                            
-                            save_to_csv(data, CLOSED_FILE)
-                            stats["closed"] += 1
-
-                            print(f"[CLOSED] {data['job_title']}")
-
-                        else:
-                        
+                        # Tampilkan hasil berdasarkan tindakan UPSERT.
+                        if result == "inserted":
                             print(
-                                f"[WARNING] Status tidak dikenal: "
-                                f"{data['job_status']}"
+                                f"[NEW] {data['job_title']} "
+                                f"({data['job_status']})"
                             )
-        
-                        existing_urls.add(source_url)
-        
+
+                        elif result == "updated":
+                            print(
+                                f"[UPDATED] {data['job_title']} "
+                                f"({data['job_status']})"
+                            )
+
+                        elif result == "unchanged":
+                            print(
+                                f"[UNCHANGED] {data['job_title']}"
+                            )
+
+                        # Hitung berdasarkan status terbaru.
+                        if result != "unchanged":
+                            if data["job_status"] == "ACTIVE":
+                                stats["active"] += 1
+
+                            elif data["job_status"] == "REVIEW":
+                                stats["review"] += 1
+
+                            elif data["job_status"] == "CLOSED":
+                                stats["closed"] += 1
+
                     except Exception as error:
                     
                         print(
