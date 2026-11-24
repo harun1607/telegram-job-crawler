@@ -1490,17 +1490,20 @@ def prepare_csv():
 # 17. FUNGSI MEMBACA DATA YANG SUDAH ADA
 # ============================================================
 
-def get_existing_urls():
+
+def get_existing_jobs():
     """
-    Membaca URL dari kedua file CSV.
+    Membaca seluruh data lowongan dari tiga file CSV.
 
-    Tujuannya untuk menghindari duplikasi postingan
-    ketika crawler dijalankan lebih dari satu kali.
+    URL menjadi identitas unik setiap postingan Telegram.
+    Data lama disimpan agar crawler bisa membandingkannya
+    dengan hasil crawling terbaru.
 
-    URL menjadi identitas unik sebuah postingan Telegram.
+    Output:
+        Dictionary dengan source_url sebagai key.
     """
 
-    existing_urls = set()
+    existing_jobs = {}
 
     for filename in [ACTIVE_FILE, REVIEW_FILE, CLOSED_FILE]:
 
@@ -1521,10 +1524,12 @@ def get_existing_urls():
                 url = row.get("source_url")
 
                 if url:
-                    existing_urls.add(url)
+                    existing_jobs[url] = {
+                        "filename": filename,
+                        "data": row
+                    }
 
-    return existing_urls
-
+    return existing_jobs
 
 # ============================================================
 # 18. FUNGSI MENYIMPAN DATA KE CSV
@@ -1555,6 +1560,167 @@ def save_to_csv(data, filename):
         )
 
         writer.writerow(data)
+        
+        ####################################################
+        
+def get_target_file(data):
+    """
+    Menentukan file CSV berdasarkan status lowongan.
+    """
+
+    status = data.get("job_status", "").upper()
+
+    status_files = {
+        "ACTIVE": ACTIVE_FILE,
+        "REVIEW": REVIEW_FILE,
+        "CLOSED": CLOSED_FILE,
+    }
+
+    if status not in status_files:
+        raise ValueError(f"Status lowongan tidak valid: {status}")
+
+    return status_files[status]
+
+
+def normalize_row(data):
+    """
+    Memastikan seluruh data mengikuti FIELDNAMES.
+    Semua nilai diubah menjadi string agar perbandingan konsisten.
+    """
+
+    return {
+        field: str(data.get(field) or "")
+        for field in FIELDNAMES
+    }
+
+
+def rewrite_csv(filename, source_url, new_data=None):
+    """
+    Menulis ulang CSV tanpa data dengan source_url tertentu.
+
+    Jika new_data tersedia, masukkan data terbaru sebagai pengganti.
+    """
+
+    rows = []
+
+    if os.path.exists(filename):
+        with open(
+            filename,
+            "r",
+            newline="",
+            encoding="utf-8-sig"
+        ) as file:
+
+            reader = csv.DictReader(file)
+
+            for row in reader:
+                if row.get("source_url") != source_url:
+                    rows.append(normalize_row(row))
+
+    if new_data is not None:
+        rows.append(normalize_row(new_data))
+
+    temp_file = filename + ".tmp"
+
+    with open(
+        temp_file,
+        "w",
+        newline="",
+        encoding="utf-8-sig"
+    ) as file:
+
+        writer = csv.DictWriter(
+            file,
+            fieldnames=FIELDNAMES
+        )
+
+        writer.writeheader()
+        writer.writerows(rows)
+
+    os.replace(temp_file, filename)
+
+
+def upsert_to_csv(data, existing_jobs):
+    """
+    Memasukkan data baru atau memperbarui data yang sudah ada.
+
+    Return:
+        inserted  : data baru
+        updated   : data diperbarui
+        unchanged : tidak ada perubahan
+    """
+
+    new_data = normalize_row(data)
+    source_url = new_data["source_url"]
+
+    if not source_url:
+        raise ValueError("source_url tidak boleh kosong")
+
+    target_file = get_target_file(new_data)
+
+    # 1. Data belum pernah ditemukan
+    if source_url not in existing_jobs:
+
+        save_to_csv(new_data, target_file)
+
+        existing_jobs[source_url] = {
+            "filename": target_file,
+            "data": new_data
+        }
+
+        return "inserted"
+
+    # 2. Data sudah pernah ditemukan
+    old_job = existing_jobs[source_url]
+
+    old_file = old_job["filename"]
+    old_data = normalize_row(old_job["data"])
+
+    # Abaikan perubahan crawled_at saat membandingkan
+    comparable_old = {
+        key: value
+        for key, value in old_data.items()
+        if key != "crawled_at"
+    }
+
+    comparable_new = {
+        key: value
+        for key, value in new_data.items()
+        if key != "crawled_at"
+    }
+
+    # 3. Tidak ada perubahan berarti
+    if comparable_old == comparable_new:
+        return "unchanged"
+
+    # 4. Data berubah, tetapi masih di file yang sama
+    if old_file == target_file:
+
+        rewrite_csv(
+            old_file,
+            source_url,
+            new_data
+        )
+
+    # 5. Status berubah, pindahkan ke file tujuan
+    else:
+
+        # Simpan ke file tujuan terlebih dahulu
+        save_to_csv(new_data, target_file)
+
+        # Hapus dari file sebelumnya
+        rewrite_csv(
+            old_file,
+            source_url
+        )
+
+    existing_jobs[source_url] = {
+        "filename": target_file,
+        "data": new_data
+    }
+
+    return "updated"
+
 
 
 # ============================================================
@@ -1687,33 +1853,8 @@ async def crawl_telegram():
 
     prepare_csv()
 
-    existing_urls = get_existing_urls()
+    existing_urls = get_existing_jobs()
     
-    # DEBUG: Periksa lokasi data duplikat.
-    target_urls = {
-        "https://t.me/ikjofficial/120006",
-        "https://t.me/ikjofficial/120003",
-        "https://t.me/ikjofficial/120002",
-        "https://t.me/ikjofficial/119998",
-        "https://t.me/ikjofficial/119996",
-        "https://t.me/ikjofficial/119995",
-        "https://t.me/ikjofficial/119993",
-    }
-    
-    for filename in [ACTIVE_FILE, REVIEW_FILE, CLOSED_FILE]:
-        if not os.path.exists(filename):
-            continue
-        
-        with open(filename, "r", newline="", encoding="utf-8-sig") as file:
-            reader = csv.DictReader(file)
-    
-            for row in reader:
-                if row.get("source_url") in target_urls:
-                    print(
-                        f"[EXISTING] {row.get('source_url')} | "
-                        f"Status: {row.get('job_status')} | "
-                        f"File: {filename}"
-                    )
 
     # Penghitung hasil crawling.
     stats = {
