@@ -1774,7 +1774,7 @@ def process_message(message, channel_name, source_url, extracted_text):
 
     # Ekstraksi jenis pekerjaan.
     employment_type = "Tidak diketahui"
-
+    
     for keyword in [
         "full-time",
         "full time",
@@ -1786,11 +1786,11 @@ def process_message(message, channel_name, source_url, extracted_text):
         "magang",
         "tetap",
     ]:
-
+    
         if keyword in text.lower():
             employment_type = keyword
             break
-
+        
         job_title = extract_job_title(text)
 
     # Susun seluruh data menjadi satu dictionary.
