@@ -171,6 +171,8 @@ CLOSED_KEYWORDS = [
     "tidak menerima lamaran",
     "sudah tidak menerima lamaran",
     "lowongan sudah tidak tersedia",
+    "lowongan ditutup",
+    "rekrutmen ditutup",
 ]
 
 # Keyword ini menjadi bukti eksplisit bahwa lamaran masih dibuka.

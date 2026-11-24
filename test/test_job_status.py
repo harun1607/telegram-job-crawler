@@ -210,6 +210,56 @@ class TestJobStatus(unittest.TestCase):
 
         self.assertEqual(result["status"], "ACTIVE")
 
+    # ========================================================
+    # 6. KONFLIK BUKTI STATUS LOWONGAN
+    # ========================================================
+
+    def test_closed_keyword_overrides_active_evidence(self):
+        result = detect_job_status(
+            (
+                "Lowongan operator produksi masih dibuka. "
+                "Namun lowongan sudah ditutup."
+            ),
+            self.today
+        )
+
+        self.assertEqual(result["status"], "CLOSED")
+
+    def test_expired_deadline_overrides_active_evidence(self):
+        expired_date = self.today - timedelta(days=1)
+
+        result = detect_job_status(
+            (
+                "Dibutuhkan operator produksi. "
+                "Kirim CV sekarang. "
+                f"Deadline: {expired_date.strftime('%d-%m-%Y')}"
+            ),
+            self.today
+        )
+
+        self.assertEqual(result["status"], "CLOSED")
+
+    def test_active_evidence_with_future_deadline(self):
+        future_deadline = self.today + timedelta(days=5)
+
+        result = detect_job_status(
+            (
+                "Dibutuhkan operator produksi. "
+                "Kirim CV sekarang. "
+                f"Deadline: {future_deadline.strftime('%d-%m-%Y')}"
+            ),
+            self.today
+        )
+
+        self.assertEqual(result["status"], "ACTIVE")
+
+    def test_closed_keyword_without_other_evidence(self):
+        result = detect_job_status(
+            "Informasi lowongan operator produksi sudah ditutup.",
+            self.today
+        )
+
+        self.assertEqual(result["status"], "CLOSED")
 
 class TestDeadlineExtractor(unittest.TestCase):
 
@@ -243,6 +293,11 @@ class TestDeadlineExtractor(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+        
+        
+    
+    
+
 
 
 if __name__ == "__main__":

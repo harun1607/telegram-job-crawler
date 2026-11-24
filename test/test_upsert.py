@@ -196,27 +196,27 @@ class TestUpsertInsert(unittest.TestCase):
         )
         
     def test_status_change_moves_job_to_closed_file(self):
-    
+
         # 1. Masukkan data awal dengan status ACTIVE.
         first_result = main.upsert_to_csv(
             self.job_data,
             self.existing_jobs
         )
-    
+
         # 2. Ubah status pekerjaan menjadi CLOSED.
         closed_job = self.job_data.copy()
         closed_job["job_status"] = "CLOSED"
-    
+
         # 3. Jalankan UPSERT kembali.
         second_result = main.upsert_to_csv(
             closed_job,
             self.existing_jobs
         )
-    
+
         # 4. Pastikan proses INSERT dan UPDATE berhasil.
         self.assertEqual(first_result, "inserted")
         self.assertEqual(second_result, "updated")
-    
+
         # 5. Baca active.csv.
         with open(
             self.active_file,
@@ -225,7 +225,7 @@ class TestUpsertInsert(unittest.TestCase):
             encoding="utf-8-sig"
         ) as file:
             active_rows = list(csv.DictReader(file))
-    
+
         # 6. Baca closed.csv.
         with open(
             self.closed_file,
@@ -234,30 +234,110 @@ class TestUpsertInsert(unittest.TestCase):
             encoding="utf-8-sig"
         ) as file:
             closed_rows = list(csv.DictReader(file))
-    
+
         # 7. Pastikan data sudah keluar dari active.csv.
         self.assertEqual(len(active_rows), 0)
-    
+
         # 8. Pastikan data masuk ke closed.csv.
         self.assertEqual(len(closed_rows), 1)
-    
+
         # 9. Pastikan status terbaru tersimpan.
         self.assertEqual(
             closed_rows[0]["job_status"],
             "CLOSED"
         )
-    
+
         # 10. Pastikan URL tetap sama.
         self.assertEqual(
             closed_rows[0]["source_url"],
             self.job_data["source_url"]
         )
-    
+
         # 11. Pastikan existing_jobs menunjuk ke file tujuan.
         self.assertEqual(
             self.existing_jobs[self.job_data["source_url"]]["filename"],
             self.closed_file
         )
+        
+        
+    def test_existing_job_is_recognized_after_restart(self):
+    
+        # 1. Simpan data pertama kali.
+        first_result = main.upsert_to_csv(
+            self.job_data,
+            self.existing_jobs
+        )
+    
+        # 2. Simulasikan aplikasi berhenti.
+        # Dictionary lama tidak digunakan lagi.
+        self.existing_jobs = {}
+    
+        # 3. Simulasikan aplikasi berjalan kembali.
+        # Baca ulang seluruh data dari CSV.
+        self.existing_jobs = main.get_existing_jobs()
+    
+        # 4. Jalankan UPSERT dengan data yang sama.
+        second_result = main.upsert_to_csv(
+            self.job_data,
+            self.existing_jobs
+        )
+    
+        # 5. Pastikan data pertama berhasil disimpan.
+        self.assertEqual(first_result, "inserted")
+    
+        # 6. Pastikan data lama dikenali.
+        self.assertEqual(second_result, "unchanged")
+    
+        # 7. Pastikan hanya ada satu data di active.csv.
+        with open(
+            self.active_file,
+            "r",
+            newline="",
+            encoding="utf-8-sig"
+        ) as file:
+    
+            rows = list(csv.DictReader(file))
+    
+        self.assertEqual(len(rows), 1)
+    
+        # 8. Pastikan URL tetap terdaftar.
+        self.assertIn(
+            self.job_data["source_url"],
+            self.existing_jobs
+        )
+        
+        
+    def test_empty_source_url_is_rejected(self):
+    
+        # Salin data pekerjaan.
+        invalid_job = self.job_data.copy()
+    
+        # Kosongkan source_url.
+        invalid_job["source_url"] = ""
+    
+        # Pastikan sistem menolak data tersebut.
+        with self.assertRaises(ValueError):
+            main.upsert_to_csv(
+                invalid_job,
+                self.existing_jobs
+            )
+    
+        # Pastikan tidak ada data yang masuk ke CSV.
+        with open(
+            self.active_file,
+            "r",
+            newline="",
+            encoding="utf-8-sig"
+        ) as file:
+    
+            rows = list(csv.DictReader(file))
+    
+        self.assertEqual(len(rows), 0)
+    
+        # Pastikan dictionary tidak berubah.
+        self.assertEqual(self.existing_jobs, {})
+
+
 
 
 
